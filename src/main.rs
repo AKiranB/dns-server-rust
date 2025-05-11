@@ -14,6 +14,39 @@ pub struct DnsHeader {
     additionals_no: u16,
 }
 
+pub struct DnsQuestion {
+    qname: Vec<String>,
+    qtype: u16,
+    qclass: u16,
+}
+
+pub fn write_u16_be(buf: &mut Vec<u8>, v: u16) {
+    buf.push((v >> 8) as u8);
+    buf.push(v as u8);
+}
+
+fn encode_qname(labels: &[String], out: &mut Vec<u8>) {
+    for label in labels {
+        let length = label.len();
+        assert!(length <= 63, "label is too long");
+        out.push(length as u8);
+        out.extend_from_slice(label.as_bytes());
+    }
+}
+
+impl DnsQuestion {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = [].to_vec();
+        let out = Vec::new();
+
+        encode_qname(&self.qname, &result);
+
+        write_u16_be(out, &self.qtype);
+
+        result
+    }
+}
+
 impl DnsHeader {
     pub fn to_bytes(&self) -> [u8; 12] {
         let mut result: [u8; 12] = [0; 12];
@@ -47,8 +80,9 @@ impl DnsHeader {
 fn main() {
     println!("Logs from your program will appear here!");
 
-    let udp_socket: UdpSocket =
-        UdpSocket::bind("127.0.0.1:2053").expect("Failed to bind to address");
+    let addr: &'static str = "127.0.0.1:2053";
+
+    let udp_socket: UdpSocket = UdpSocket::bind(addr).expect("Failed to bind to address");
     let mut buf: [u8; 512] = [0; 512];
 
     let header: DnsHeader = DnsHeader {
@@ -68,11 +102,8 @@ fn main() {
 
     loop {
         match udp_socket.recv_from(&mut buf) {
-            Ok((nunmber_of_bytes, source_address)) => {
-                println!(
-                    "Received {} bytes from {}",
-                    nunmber_of_bytes, source_address
-                );
+            Ok((number_of_bytes, source_address)) => {
+                println!("Received {} bytes from {}", number_of_bytes, source_address);
                 let response: [u8; 12] = DnsHeader::to_bytes(&header);
                 udp_socket
                     .send_to(&response, source_address)
