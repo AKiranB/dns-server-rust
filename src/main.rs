@@ -36,14 +36,14 @@ fn encode_qname(labels: &[String], out: &mut Vec<u8>) {
 
 impl DnsQuestion {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut result: Vec<u8> = [].to_vec();
-        let out = Vec::new();
+        let mut out: Vec<u8> = Vec::new();
 
-        encode_qname(&self.qname, &result);
+        encode_qname(&self.qname, &mut out);
 
-        write_u16_be(out, &self.qtype);
+        write_u16_be(&mut out, self.qtype);
+        write_u16_be(&mut out, self.qclass);
 
-        result
+        out
     }
 }
 
@@ -85,7 +85,7 @@ fn main() {
     let udp_socket: UdpSocket = UdpSocket::bind(addr).expect("Failed to bind to address");
     let mut buf: [u8; 512] = [0; 512];
 
-    let header: DnsHeader = DnsHeader {
+    let header = DnsHeader {
         id: 1234,
         qr: true,
         opcode: 0,
@@ -100,11 +100,24 @@ fn main() {
         additionals_no: 0,
     };
 
+    let question = DnsQuestion {
+        qname: vec!["codecrafters".into(), "io".into()],
+        qtype: 0,
+        qclass: 0,
+    };
+
     loop {
         match udp_socket.recv_from(&mut buf) {
             Ok((number_of_bytes, source_address)) => {
                 println!("Received {} bytes from {}", number_of_bytes, source_address);
-                let response: [u8; 12] = DnsHeader::to_bytes(&header);
+
+                let header = DnsHeader::to_bytes(&header);
+                let question = DnsQuestion::to_bytes(&question);
+                let mut response: Vec<u8> = vec![];
+
+                response.extend_from_slice(&header);
+                response.extend_from_slice(&question);
+
                 udp_socket
                     .send_to(&response, source_address)
                     .expect("Failed to send response");
