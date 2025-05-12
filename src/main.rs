@@ -29,9 +29,11 @@ fn encode_qname(labels: &[String], out: &mut Vec<u8>) {
     for label in labels {
         let length = label.len();
         assert!(length <= 63, "label is too long");
+
         out.push(length as u8);
         out.extend_from_slice(label.as_bytes());
     }
+    out.push(0);
 }
 
 impl DnsQuestion {
@@ -94,7 +96,7 @@ fn main() {
         rd: false,
         ra: false,
         rcode: 0,
-        question_no: 0,
+        question_no: 1,
         answer_no: 0,
         authority_no: 0,
         additionals_no: 0,
@@ -102,8 +104,8 @@ fn main() {
 
     let question = DnsQuestion {
         qname: vec!["codecrafters".into(), "io".into()],
-        qtype: 0,
-        qclass: 0,
+        qtype: 1,
+        qclass: 1,
     };
 
     loop {
