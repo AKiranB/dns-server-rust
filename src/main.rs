@@ -20,32 +20,48 @@ pub struct DnsQuestion {
     qclass: u16,
 }
 
+pub struct DnsAnswer {
+    name: Vec<String>,
+    r_type: u16,
+    class: u16,
+    time_to_live: u32,
+    length: u16,
+    data: u32,
+}
+
 pub fn write_u16_be(buf: &mut Vec<u8>, v: u16) {
     buf.push((v >> 8) as u8);
     buf.push(v as u8);
 }
 
-fn encode_qname(labels: &[String], out: &mut Vec<u8>) {
+pub fn write_u32_be(buf: &mut Vec<u8>, v: u32) {
+    buf.push((v >> 24) as u8);
+    buf.push((v >> 16) as u8);
+    buf.push((v >> 8) as u8);
+    buf.push((v) as u8);
+}
+
+fn encode_qname(labels: &[String], buf: &mut Vec<u8>) {
     for label in labels {
         let length = label.len();
         assert!(length <= 63, "label is too long");
 
-        out.push(length as u8);
-        out.extend_from_slice(label.as_bytes());
+        buf.push(length as u8);
+        buf.extend_from_slice(label.as_bytes());
     }
-    out.push(0);
+    buf.push(0);
 }
 
 impl DnsQuestion {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut out: Vec<u8> = Vec::new();
+        let mut buf: Vec<u8> = Vec::new();
 
-        encode_qname(&self.qname, &mut out);
+        encode_qname(&self.qname, &mut buf);
 
-        write_u16_be(&mut out, self.qtype);
-        write_u16_be(&mut out, self.qclass);
+        write_u16_be(&mut buf, self.qtype);
+        write_u16_be(&mut buf, self.qclass);
 
-        out
+        buf
     }
 }
 
@@ -79,6 +95,23 @@ impl DnsHeader {
     }
 }
 
+impl DnsAnswer {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::new();
+        encode_qname(&self.name, &mut buf);
+
+        write_u16_be(&mut buf, self.class);
+        write_u16_be(&mut buf, self.r_type);
+
+        write_u32_be(&mut buf, self.time_to_live);
+        write_u16_be(&mut buf, self.length);
+
+        write_u32_be(&mut buf, self.data);
+
+        buf
+    }
+}
+
 fn main() {
     println!("Logs from your program will appear here!");
 
@@ -97,7 +130,7 @@ fn main() {
         ra: false,
         rcode: 0,
         question_no: 1,
-        answer_no: 0,
+        answer_no: 1,
         authority_no: 0,
         additionals_no: 0,
     };
@@ -108,6 +141,15 @@ fn main() {
         qclass: 1,
     };
 
+    let answer = DnsAnswer {
+        name: vec!["codecrafters".into(), "io".into()],
+        r_type: 1,
+        class: 1,
+        time_to_live: 60,
+        length: 4,
+        data: 8888,
+    };
+
     loop {
         match udp_socket.recv_from(&mut buf) {
             Ok((number_of_bytes, source_address)) => {
@@ -115,10 +157,12 @@ fn main() {
 
                 let header = DnsHeader::to_bytes(&header);
                 let question = DnsQuestion::to_bytes(&question);
+                let answer = DnsAnswer::to_bytes(&answer);
                 let mut response: Vec<u8> = vec![];
 
                 response.extend_from_slice(&header);
                 response.extend_from_slice(&question);
+                response.extend_from_slice(&answer);
 
                 udp_socket
                     .send_to(&response, source_address)
