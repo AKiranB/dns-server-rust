@@ -1,4 +1,6 @@
 use std::net::UdpSocket;
+
+use anyhow::Error;
 pub struct DnsHeader {
     id: u16,
     qr: bool,
@@ -7,11 +9,12 @@ pub struct DnsHeader {
     tc: bool,
     rd: bool,
     ra: bool,
+    z: bool,
     rcode: u8,
-    question_no: u16,
-    answer_no: u16,
-    authority_no: u16,
-    additionals_no: u16,
+    qdcount: u16,
+    ancount: u16,
+    nscount: u16,
+    arcount: u16,
 }
 
 pub struct DnsQuestion {
@@ -79,19 +82,58 @@ impl DnsHeader {
 
         result[3] = (self.ra as u8) << 7 | self.rcode;
 
-        result[4] = (self.question_no >> 8) as u8;
-        result[5] = self.question_no as u8;
+        result[4] = (self.z as u8) << 7 | (self.qdcount >> 8) as u8;
+        result[5] = self.qdcount as u8;
 
-        result[6] = (self.answer_no >> 8) as u8;
-        result[7] = self.answer_no as u8;
+        result[6] = (self.ancount >> 8) as u8;
+        result[7] = self.ancount as u8;
 
-        result[8] = (self.authority_no >> 8) as u8;
-        result[9] = self.authority_no as u8;
+        result[8] = (self.nscount >> 8) as u8;
+        result[9] = self.nscount as u8;
 
-        result[10] = (self.additionals_no >> 8) as u8;
-        result[11] = self.additionals_no as u8;
+        result[10] = (self.arcount >> 8) as u8;
+        result[11] = self.arcount as u8;
 
         result
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<DnsHeader, Error> {
+        assert!(
+            bytes.len() >= 12,
+            "DNS header must be at least 12 bytes long"
+        );
+
+        let id = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let flags = u16::from_be_bytes([bytes[2], bytes[3]]);
+        let qdcount = u16::from_be_bytes([bytes[4], bytes[5]]);
+        let ancount = u16::from_be_bytes([bytes[6], bytes[7]]);
+        let nscount = u16::from_be_bytes([bytes[8], bytes[9]]);
+        let arcount = u16::from_be_bytes([bytes[10], bytes[11]]);
+
+        let qr = (flags & 0x8000) != 0;
+        let opcode = ((flags >> 11) & 0x0F) as u8;
+        let aa = (flags & 0x0400) != 0;
+        let tc = (flags & 0x0200) != 0;
+        let rd = (flags & 0x0100) != 0;
+        let z = (flags & 0x0040) != 0;
+        let ra = (flags & 0x0080) != 0;
+        let rcode = (flags & 0x000F) as u8;
+
+        return Ok(Self {
+            id,
+            qr,
+            opcode,
+            aa,
+            tc,
+            rd,
+            z,
+            ra,
+            ancount,
+            rcode,
+            arcount,
+            nscount,
+            qdcount,
+        });
     }
 }
 
@@ -128,11 +170,12 @@ fn main() {
         tc: false,
         rd: false,
         ra: false,
+        z: false,
         rcode: 0,
-        question_no: 1,
-        answer_no: 1,
-        authority_no: 0,
-        additionals_no: 0,
+        qdcount: 1,
+        ancount: 1,
+        nscount: 0,
+        arcount: 0,
     };
 
     let question = DnsQuestion {
