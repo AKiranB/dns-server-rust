@@ -155,8 +155,6 @@ impl DnsAnswer {
 }
 
 fn main() {
-    println!("Logs from your program will appear here!");
-
     let addr: &'static str = "127.0.0.1:2053";
 
     let udp_socket: UdpSocket = UdpSocket::bind(addr).expect("Failed to bind to address");
