@@ -1,4 +1,4 @@
-use std::net::UdpSocket;
+use std::{net::UdpSocket, ops::Add, process::Output};
 
 use anyhow::Error;
 pub struct DnsHeader {
@@ -66,6 +66,38 @@ impl DnsQuestion {
 
         buf
     }
+
+    pub fn from_bytes(buf: &[u8], mut offset: usize) -> (Self, usize) {
+        let mut labels = Vec::new();
+
+        loop {
+            let len: u8 = buf[offset];
+            offset += 1;
+            if len == 0 {
+                // this the denotor of the end of QNAMe
+                break;
+            }
+
+            let label_bytes = &buf[offset..offset + len as usize];
+            let label = String::from_utf8_lossy(label_bytes).to_string();
+            labels.push(label);
+            offset += len as usize;
+        }
+
+        let qtype = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
+
+        offset += 2;
+
+        let qclass = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
+
+        let question = DnsQuestion {
+            qname: labels,
+            qtype: qtype,
+            qclass: qclass,
+        };
+
+        return (question, offset);
+    }
 }
 
 impl DnsHeader {
@@ -97,7 +129,7 @@ impl DnsHeader {
         result
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<DnsHeader, Error> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<(u16, bool, u8, bool, u8), Error> {
         assert!(
             bytes.len() >= 12,
             "DNS header must be at least 12 bytes long"
@@ -105,35 +137,15 @@ impl DnsHeader {
 
         let id = u16::from_be_bytes([bytes[0], bytes[1]]);
         let flags = u16::from_be_bytes([bytes[2], bytes[3]]);
-        let qdcount = u16::from_be_bytes([bytes[4], bytes[5]]);
-        let ancount = u16::from_be_bytes([bytes[6], bytes[7]]);
-        let nscount = u16::from_be_bytes([bytes[8], bytes[9]]);
-        let arcount = u16::from_be_bytes([bytes[10], bytes[11]]);
+
+        print!("Flags: {:016b}\n", flags);
 
         let qr = (flags & 0x8000) != 0;
         let opcode = ((flags >> 11) & 0x0F) as u8;
-        let aa = (flags & 0x0400) != 0;
-        let tc = (flags & 0x0200) != 0;
         let rd = (flags & 0x0100) != 0;
-        let z = (flags & 0x0040) != 0;
-        let ra = (flags & 0x0080) != 0;
-        let rcode = (flags & 0x000F) as u8;
+        let rcode = if opcode == 0 { 0 } else { 4 };
 
-        return Ok(Self {
-            id,
-            qr,
-            opcode,
-            aa,
-            tc,
-            rd,
-            z,
-            ra,
-            ancount,
-            rcode,
-            arcount,
-            nscount,
-            qdcount,
-        });
+        return Ok((id, qr, opcode, rd, rcode));
     }
 }
 
@@ -155,32 +167,12 @@ impl DnsAnswer {
 }
 
 fn main() {
+    println!("Logs from your program will appear here!");
+
     let addr: &'static str = "127.0.0.1:2053";
 
     let udp_socket: UdpSocket = UdpSocket::bind(addr).expect("Failed to bind to address");
     let mut buf: [u8; 512] = [0; 512];
-
-    let header = DnsHeader {
-        id: 1234,
-        qr: true,
-        opcode: 0,
-        aa: false,
-        tc: false,
-        rd: false,
-        ra: false,
-        z: false,
-        rcode: 0,
-        qdcount: 1,
-        ancount: 1,
-        nscount: 0,
-        arcount: 0,
-    };
-
-    let question = DnsQuestion {
-        qname: vec!["codecrafters".into(), "io".into()],
-        qtype: 1,
-        qclass: 1,
-    };
 
     let answer = DnsAnswer {
         name: vec!["codecrafters".into(), "io".into()],
@@ -195,6 +187,33 @@ fn main() {
         match udp_socket.recv_from(&mut buf) {
             Ok((number_of_bytes, source_address)) => {
                 println!("Received {} bytes from {}", number_of_bytes, source_address);
+                let read_values_from_header = DnsHeader::from_bytes(&buf).unwrap();
+                let read_values_from_question = DnsQuestion::from_bytes(&buf, 12);
+
+                println!("{:?}", read_values_from_header);
+
+                let header = DnsHeader {
+                    id: read_values_from_header.0,
+                    // we can always assume we are responding
+                    qr: true,
+                    opcode: read_values_from_header.2,
+                    aa: false,
+                    tc: false,
+                    rd: read_values_from_header.3,
+                    ra: false,
+                    z: false,
+                    rcode: read_values_from_header.4,
+                    qdcount: 1,
+                    ancount: 1,
+                    nscount: 0,
+                    arcount: 0,
+                };
+
+                let question = DnsQuestion {
+                    qname: read_values_from_question.0.qname,
+                    qclass: read_values_from_question.0.qclass,
+                    qtype: read_values_from_question.0.qtype,
+                };
 
                 let header = DnsHeader::to_bytes(&header);
                 let question = DnsQuestion::to_bytes(&question);
