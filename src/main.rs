@@ -1,6 +1,5 @@
-use std::net::UdpSocket;
-
 use anyhow::Error;
+use std::net::UdpSocket;
 pub struct DnsHeader {
     id: u16,
     qr: bool,
@@ -74,7 +73,7 @@ impl DnsQuestion {
             let len: u8 = buf[offset];
             offset += 1;
             if len == 0 {
-                // this the denotor of the end of QNAMe
+                // This denotes he end of QNAME
                 break;
             }
 
@@ -90,6 +89,8 @@ impl DnsQuestion {
 
         let qclass = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
 
+        offset += 2;
+
         let question = DnsQuestion {
             qname: labels,
             qtype: qtype,
@@ -102,31 +103,27 @@ impl DnsQuestion {
 
 impl DnsHeader {
     pub fn to_bytes(&self) -> [u8; 12] {
-        let mut result: [u8; 12] = [0; 12];
-        result[0] = (self.id >> 8) as u8;
-        result[1] = self.id as u8;
+        let mut out = [0u8; 12];
 
-        result[2] = (self.qr as u8) << 7
-            | self.opcode << 3
-            | (self.aa as u8) << 2
-            | (self.tc as u8) << 1
-            | self.rd as u8;
+        out[0..2].copy_from_slice(&self.id.to_be_bytes());
 
-        result[3] = (self.ra as u8) << 7 | self.rcode;
+        let flags: u16 = ((self.qr as u16) << 15)
+            | ((self.opcode as u16) << 11)
+            | ((self.aa as u16) << 10)
+            | ((self.tc as u16) << 9)
+            | ((self.rd as u16) << 8)
+            | ((self.ra as u16) << 7)
+            | (((self.z as u16) & 0x7) << 4)
+            | ((self.rcode as u16) & 0xF);
 
-        result[4] = (self.z as u8) << 7 | (self.qdcount >> 8) as u8;
-        result[5] = self.qdcount as u8;
+        out[2..4].copy_from_slice(&flags.to_be_bytes());
 
-        result[6] = (self.ancount >> 8) as u8;
-        result[7] = self.ancount as u8;
+        out[4..6].copy_from_slice(&self.qdcount.to_be_bytes());
+        out[6..8].copy_from_slice(&self.ancount.to_be_bytes());
+        out[8..10].copy_from_slice(&self.nscount.to_be_bytes());
+        out[10..12].copy_from_slice(&self.arcount.to_be_bytes());
 
-        result[8] = (self.nscount >> 8) as u8;
-        result[9] = self.nscount as u8;
-
-        result[10] = (self.arcount >> 8) as u8;
-        result[11] = self.arcount as u8;
-
-        result
+        out
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<(u16, bool, u8, bool, u8), Error> {
@@ -154,8 +151,8 @@ impl DnsAnswer {
         let mut buf: Vec<u8> = Vec::new();
         encode_qname(&self.name, &mut buf);
 
-        write_u16_be(&mut buf, self.class);
         write_u16_be(&mut buf, self.r_type);
+        write_u16_be(&mut buf, self.class);
 
         write_u32_be(&mut buf, self.time_to_live);
         write_u16_be(&mut buf, self.length);
@@ -167,30 +164,30 @@ impl DnsAnswer {
 }
 
 fn main() {
-    println!("Logs from your program will appear here!");
-
     let addr: &'static str = "127.0.0.1:2053";
-
     let udp_socket: UdpSocket = UdpSocket::bind(addr).expect("Failed to bind to address");
     let mut buf: [u8; 512] = [0; 512];
-
-    let answer = DnsAnswer {
-        name: vec!["codecrafters".into(), "io".into()],
-        r_type: 1,
-        class: 1,
-        time_to_live: 60,
-        length: 4,
-        data: 8888,
-    };
 
     loop {
         match udp_socket.recv_from(&mut buf) {
             Ok((number_of_bytes, source_address)) => {
                 println!("Received {} bytes from {}", number_of_bytes, source_address);
-                let read_values_from_header = DnsHeader::from_bytes(&buf).unwrap();
-                let read_values_from_question = DnsQuestion::from_bytes(&buf, 12);
 
-                println!("{:?}", read_values_from_header);
+                let read_values_from_header = DnsHeader::from_bytes(&buf).unwrap();
+
+                println!("values from header {:?}", read_values_from_header);
+
+                let read_values_from_question_section_one: (DnsQuestion, usize) =
+                    DnsQuestion::from_bytes(&buf, 12);
+                let mut read_values_from_question_section_two: Option<DnsQuestion> = None;
+
+                let current_byte_offset = read_values_from_question_section_one.1;
+
+                if number_of_bytes > current_byte_offset {
+                    let (q2, _off2) = DnsQuestion::from_bytes(&buf, current_byte_offset);
+                    println!("{:#?}", q2.qclass);
+                    read_values_from_question_section_two = Some(q2)
+                }
 
                 let header = DnsHeader {
                     id: read_values_from_header.0,
@@ -209,20 +206,59 @@ fn main() {
                     arcount: 0,
                 };
 
+                let name = read_values_from_question_section_one.0.qname.clone();
+
                 let question = DnsQuestion {
-                    qname: read_values_from_question.0.qname,
-                    qclass: read_values_from_question.0.qclass,
-                    qtype: read_values_from_question.0.qtype,
+                    qname: name.clone(),
+                    qclass: read_values_from_question_section_one.0.qclass,
+                    qtype: read_values_from_question_section_one.0.qtype,
+                };
+
+                let answer = DnsAnswer {
+                    name: name,
+                    r_type: 1,
+                    class: 1,
+                    time_to_live: 60,
+                    length: 4,
+                    data: 8888,
                 };
 
                 let header = DnsHeader::to_bytes(&header);
                 let question = DnsQuestion::to_bytes(&question);
                 let answer = DnsAnswer::to_bytes(&answer);
+                let mut answer2: Option<Vec<u8>> = None;
+
                 let mut response: Vec<u8> = vec![];
 
                 response.extend_from_slice(&header);
                 response.extend_from_slice(&question);
+
+                if let Some(ref q2) = read_values_from_question_section_two {
+                    let question_2 = DnsQuestion {
+                        qname: q2.qname.clone(),
+                        qclass: q2.qclass,
+                        qtype: q2.qtype,
+                    };
+                    let question_2_bytes = DnsQuestion::to_bytes(&question_2);
+                    response.extend_from_slice(&question_2_bytes);
+
+                    let answer_2 = DnsAnswer {
+                        name: q2.qname.clone(),
+                        r_type: 1,
+                        class: 1,
+                        time_to_live: 60,
+                        length: 4,
+                        data: 8888,
+                    };
+                    answer2 = Some(DnsAnswer::to_bytes(&answer_2));
+                }
+
                 response.extend_from_slice(&answer);
+                if let Some(answer_2_vec) = answer2 {
+                    response.extend_from_slice(&answer_2_vec);
+                }
+
+                println!("{:?}", response);
 
                 udp_socket
                     .send_to(&response, source_address)
