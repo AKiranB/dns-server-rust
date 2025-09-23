@@ -71,6 +71,46 @@ fn write_name(name: &DnsName, buf: &mut Vec<u8>) {
     }
 }
 
+fn read_name(buf: &[u8], start: usize) -> (Vec<String>, usize) {
+    let mut labels = Vec::new();
+    let mut offset = start;
+    let mut end_after_pointer = 0usize;
+    let mut has_jumped = false;
+
+    loop {
+        let len = buf[offset];
+        if len & 0xC0 == 0xC0 {
+            let byte_two = buf[offset + 1];
+            let ptr = (((len as u16 & 0x3F) << 8) | byte_two as u16) as usize;
+            if !has_jumped {
+                end_after_pointer = ptr + 1;
+                has_jumped = true;
+            }
+            offset = ptr;
+            continue;
+        }
+
+        if len == 0 {
+            // This denotes he end of QNAME
+            offset += 1;
+            break;
+        }
+
+        offset += 1;
+        let label_bytes = &buf[offset..offset + len as usize];
+        let label = String::from_utf8_lossy(label_bytes).to_string();
+        labels.push(label);
+        offset += len as usize;
+    }
+
+    let total_bytes_consumed = if has_jumped {
+        end_after_pointer
+    } else {
+        offset
+    };
+    return (labels, total_bytes_consumed);
+}
+
 impl DnsQuestion {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
@@ -83,23 +123,9 @@ impl DnsQuestion {
         buf
     }
 
-    pub fn from_bytes(buf: &[u8], mut offset: usize) -> (Self, usize) {
-        let mut labels = Vec::new();
-
-        loop {
-            let len: u8 = buf[offset];
-            offset += 1;
-            if len == 0 {
-                // This denotes he end of QNAME
-                break;
-            }
-
-            let label_bytes = &buf[offset..offset + len as usize];
-            let label = String::from_utf8_lossy(label_bytes).to_string();
-            labels.push(label);
-            offset += len as usize;
-        }
-
+    pub fn from_bytes(buf: &[u8], start: usize) -> (Self, usize) {
+        let (labels, total_bytes_consumed) = read_name(buf, start);
+        let mut offset = total_bytes_consumed;
         let qtype = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
 
         offset += 2;
