@@ -17,18 +17,23 @@ pub struct DnsHeader {
 }
 
 pub struct DnsQuestion {
-    qname: Vec<String>,
+    qname: DnsName,
     qtype: u16,
     qclass: u16,
 }
 
 pub struct DnsAnswer {
-    name: Vec<String>,
+    name: DnsName,
     r_type: u16,
     class: u16,
     time_to_live: u32,
     length: u16,
     data: u32,
+}
+#[derive(Clone, Debug)]
+enum DnsName {
+    Ptr(u16),
+    Label(Vec<String>),
 }
 
 pub fn write_u16_be(buf: &mut Vec<u8>, v: u16) {
@@ -54,11 +59,23 @@ fn encode_qname(labels: &[String], buf: &mut Vec<u8>) {
     buf.push(0);
 }
 
+fn write_name(name: &DnsName, buf: &mut Vec<u8>) {
+    match name {
+        DnsName::Label(labels) => encode_qname(&labels, buf),
+        DnsName::Ptr(off) => {
+            let hi = 0xC0 | (((off >> 8) & 0x3F) as u8);
+            let lo = (off & 0xFF) as u8;
+            buf.push(hi);
+            buf.push(lo);
+        }
+    }
+}
+
 impl DnsQuestion {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
 
-        encode_qname(&self.qname, &mut buf);
+        write_name(&self.qname, &mut buf);
 
         write_u16_be(&mut buf, self.qtype);
         write_u16_be(&mut buf, self.qclass);
@@ -92,7 +109,7 @@ impl DnsQuestion {
         offset += 2;
 
         let question = DnsQuestion {
-            qname: labels,
+            qname: DnsName::Label(labels),
             qtype: qtype,
             qclass: qclass,
         };
@@ -149,7 +166,7 @@ impl DnsHeader {
 impl DnsAnswer {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
-        encode_qname(&self.name, &mut buf);
+        write_name(&self.name, &mut buf);
 
         write_u16_be(&mut buf, self.r_type);
         write_u16_be(&mut buf, self.class);
@@ -206,16 +223,17 @@ fn main() {
                     arcount: 0,
                 };
 
-                let name = read_values_from_question_section_one.0.qname.clone();
+                let name = read_values_from_question_section_one.0.qname;
 
                 let question = DnsQuestion {
-                    qname: name.clone(),
+                    qname: name,
                     qclass: read_values_from_question_section_one.0.qclass,
                     qtype: read_values_from_question_section_one.0.qtype,
                 };
 
                 let answer = DnsAnswer {
-                    name: name,
+                    // This is a pointer back to the byte where name is
+                    name: DnsName::Ptr(12),
                     r_type: 1,
                     class: 1,
                     time_to_live: 60,
@@ -225,13 +243,14 @@ fn main() {
 
                 let header = DnsHeader::to_bytes(&header);
                 let question = DnsQuestion::to_bytes(&question);
-                let answer = DnsAnswer::to_bytes(&answer);
-                let mut answer2: Option<Vec<u8>> = None;
 
                 let mut response: Vec<u8> = vec![];
 
                 response.extend_from_slice(&header);
                 response.extend_from_slice(&question);
+
+                let answer = DnsAnswer::to_bytes(&answer);
+                let mut answer2: Option<Vec<u8>> = None;
 
                 if let Some(ref q2) = read_values_from_question_section_two {
                     let question_2 = DnsQuestion {
@@ -243,7 +262,8 @@ fn main() {
                     response.extend_from_slice(&question_2_bytes);
 
                     let answer_2 = DnsAnswer {
-                        name: q2.qname.clone(),
+                        // And this is a pointer back to where
+                        name: DnsName::Ptr(current_byte_offset as u16),
                         r_type: 1,
                         class: 1,
                         time_to_live: 60,
