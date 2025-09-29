@@ -185,7 +185,10 @@ impl DnsHeader {
         let rd = (flags & 0x0100) != 0;
         let rcode = if opcode == 0 { 0 } else { 4 };
 
-        return Ok((id, qr, opcode, rd, rcode));
+        let qdcount = u16::from_be_bytes([bytes[4], bytes[5]]);
+        let ancount = u16::from_be_bytes([bytes[6], bytes[7]]);
+
+        return Ok((id, qr, opcode, rd, rcode, qdcount, ancount));
     }
 }
 
