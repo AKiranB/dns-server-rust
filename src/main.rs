@@ -279,13 +279,8 @@ fn main() {
                     DnsQuestion::from_bytes(&buf, 12);
                 let mut read_values_from_question_section_two: Option<DnsQuestion> = None;
 
-                let current_byte_offset = read_values_from_question_section_one.1;
-
-                if number_of_bytes > current_byte_offset {
-                    let (q2, _off2) = DnsQuestion::from_bytes(&buf, current_byte_offset);
-                    println!("{:#?}", q2.qclass);
-                    read_values_from_question_section_two = Some(q2)
-                }
+                let (questions, offsets) = read_questions(qdcount, &buf);
+                let answers = build_answers(&questions, offsets);
 
                 let header = DnsHeader {
                     id: read_values_from_header.0,
