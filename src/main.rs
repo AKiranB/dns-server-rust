@@ -296,8 +296,8 @@ fn main() {
                     ra: false,
                     z: false,
                     rcode: read_values_from_header.4,
-                    qdcount: 1,
-                    ancount: 1,
+                    qdcount,
+                    ancount: answers.len() as u16,
                     nscount: 0,
                     arcount: 0,
                 };
