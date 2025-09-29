@@ -275,12 +275,8 @@ fn main() {
                 println!("Received {} bytes from {}", number_of_bytes, source_address);
 
                 let read_values_from_header = DnsHeader::from_bytes(&buf).unwrap();
-
-                println!("values from header {:?}", read_values_from_header);
-
-                let read_values_from_question_section_one: (DnsQuestion, usize) =
-                    DnsQuestion::from_bytes(&buf, 12);
-                let mut read_values_from_question_section_two: Option<DnsQuestion> = None;
+                let qdcount = read_values_from_header.5;
+                let mut response: Vec<u8> = vec![];
 
                 let (questions, offsets) = read_questions(qdcount, &buf);
                 let answers = build_answers(&questions, offsets);
@@ -302,60 +298,11 @@ fn main() {
                     arcount: 0,
                 };
 
-                let name = read_values_from_question_section_one.0.qname;
-
-                let question = DnsQuestion {
-                    qname: name,
-                    qclass: read_values_from_question_section_one.0.qclass,
-                    qtype: read_values_from_question_section_one.0.qtype,
-                };
-
-                let answer = DnsAnswer {
-                    // This is a pointer back to the byte where name is
-                    name: DnsName::Ptr(12),
-                    r_type: 1,
-                    class: 1,
-                    time_to_live: 60,
-                    length: 4,
-                    data: 8888,
-                };
-
                 let header = DnsHeader::to_bytes(&header);
-                let question = DnsQuestion::to_bytes(&question);
-
-                let mut response: Vec<u8> = vec![];
 
                 response.extend_from_slice(&header);
-                response.extend_from_slice(&question);
-
-                let answer = DnsAnswer::to_bytes(&answer);
-                let mut answer2: Option<Vec<u8>> = None;
-
-                if let Some(ref q2) = read_values_from_question_section_two {
-                    let question_2 = DnsQuestion {
-                        qname: q2.qname.clone(),
-                        qclass: q2.qclass,
-                        qtype: q2.qtype,
-                    };
-                    let question_2_bytes = DnsQuestion::to_bytes(&question_2);
-                    response.extend_from_slice(&question_2_bytes);
-
-                    let answer_2 = DnsAnswer {
-                        // And this is a pointer back to where
-                        name: DnsName::Ptr(current_byte_offset as u16),
-                        r_type: 1,
-                        class: 1,
-                        time_to_live: 60,
-                        length: 4,
-                        data: 8888,
-                    };
-                    answer2 = Some(DnsAnswer::to_bytes(&answer_2));
-                }
-
-                response.extend_from_slice(&answer);
-                if let Some(answer_2_vec) = answer2 {
-                    response.extend_from_slice(&answer_2_vec);
-                }
+                response.extend_from_slice(&write_questions(questions));
+                response.extend_from_slice(&write_answers(answers));
 
                 println!("{:?}", response);
 
