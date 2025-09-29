@@ -169,7 +169,7 @@ impl DnsHeader {
         out
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<(u16, bool, u8, bool, u8), Error> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<(u16, bool, u8, bool, u8, u16, u16), Error> {
         assert!(
             bytes.len() >= 12,
             "DNS header must be at least 12 bytes long"
