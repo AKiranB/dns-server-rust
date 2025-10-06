@@ -1,5 +1,6 @@
 use anyhow::Error;
 use std::net::UdpSocket;
+mod utils;
 pub struct DnsHeader {
     id: u16,
     qr: bool,
@@ -91,7 +92,6 @@ fn read_name(buf: &[u8], start: usize) -> (Vec<String>, usize) {
         }
 
         if len == 0 {
-            // This denotes he end of QNAME
             offset += 1;
             break;
         }
@@ -283,7 +283,6 @@ fn main() {
 
                 let header = DnsHeader {
                     id: read_values_from_header.0,
-                    // we can always assume we are responding
                     qr: true,
                     opcode: read_values_from_header.2,
                     aa: false,
