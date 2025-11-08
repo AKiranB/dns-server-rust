@@ -294,6 +294,13 @@ fn main() {
     let udp_socket: UdpSocket = UdpSocket::bind(addr).expect("Failed to bind to address");
     let mut buf: [u8; 512] = [0; 512];
 
+    let args: Vec<String> = env::args().collect();
+
+    let mut resolver = None;
+    if args[1] == "--resolver" {
+        resolver = Some(&args[2]);
+    }
+
     loop {
         match udp_socket.recv_from(&mut buf) {
             Ok((number_of_bytes, source_address)) => {
