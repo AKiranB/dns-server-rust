@@ -266,6 +266,7 @@ fn build_answers(
             data: 8888,
         };
         a.push(answer);
+        }
     }
     a
 }
