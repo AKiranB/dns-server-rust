@@ -207,6 +207,20 @@ impl DnsAnswer {
 
         buf
     }
+
+    pub fn from_bytes(buf: &[u8]) -> 
+
+    pub fn parse_upstream(buf: &[u8]) -> DnsAnswer {
+        let read_values_from_forward_server_header = DnsHeader::from_bytes(&buf).unwrap();
+        let qd_count = read_values_from_forward_server_header.5;
+        // starting byte or end byte of the question seciton
+        let offset = read_questions(qd_count, &buf);
+        // from here, for ancount of the above forwarding servers header section,
+        // iterate over the buffer and use from_bytes
+        // to parse each answer from the forwarding server
+        // write this directly to the vector in build answers
+
+    }
 }
 
 fn read_questions(qdcount: u16, buf: &[u8]) -> (Vec<DnsQuestion>, Vec<usize>) {
