@@ -1,6 +1,5 @@
 use anyhow::Error;
-use std::net::UdpSocket;
-mod utils;
+use std::{env, net::UdpSocket};
 pub struct DnsHeader {
     id: u16,
     qr: bool,
@@ -92,6 +91,7 @@ fn read_name(buf: &[u8], start: usize) -> (Vec<String>, usize) {
         }
 
         if len == 0 {
+            // This denotes he end of QNAME
             offset += 1;
             break;
         }
@@ -257,15 +257,15 @@ fn build_answers(
 
             let (amt, src) = connection.recv_from(&mut buf);
         } else {
-        let answer = DnsAnswer {
-            name: DnsName::Ptr(offsets[i] as u16),
-            r_type: question.qtype,
-            class: question.qclass,
-            time_to_live: 60,
-            length: 4,
-            data: 8888,
-        };
-        a.push(answer);
+            let answer = DnsAnswer {
+                name: DnsName::Ptr(offsets[i] as u16),
+                r_type: question.qtype,
+                class: question.qclass,
+                time_to_live: 60,
+                length: 4,
+                data: 8888,
+            };
+            a.push(answer);
         }
     }
     a
@@ -306,12 +306,14 @@ fn main() {
             Ok((number_of_bytes, source_address)) => {
                 println!("Received {} bytes from {}", number_of_bytes, source_address);
 
+                let mut response: Vec<u8> = vec![];
                 let read_values_from_header = DnsHeader::from_bytes(&buf).unwrap();
                 let qdcount = read_values_from_header.5;
-                let mut response: Vec<u8> = vec![];
 
                 let (questions, offsets) = read_questions(qdcount, &buf);
-                let answers = build_answers(&questions, offsets);
+                let answers = build_answers(&questions, offsets, resolver.is_some());
+
+    
 
                 let header = DnsHeader {
                     id: read_values_from_header.0,
@@ -334,9 +336,6 @@ fn main() {
                 response.extend_from_slice(&header);
                 response.extend_from_slice(&write_questions(questions));
                 response.extend_from_slice(&write_answers(answers));
-
-                println!("{:?}", response);
-
                 udp_socket
                     .send_to(&response, source_address)
                     .expect("Failed to send response");
