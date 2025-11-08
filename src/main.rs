@@ -251,6 +251,12 @@ fn build_answers(
 ) -> Vec<DnsAnswer> {
     let mut a = vec![];
     for (i, question) in questions.iter().enumerate() {
+        if is_resolver {
+            let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
+            let mut buf: [u8; 512] = [0; 512];
+
+            let (amt, src) = connection.recv_from(&mut buf);
+        } else {
         let answer = DnsAnswer {
             name: DnsName::Ptr(offsets[i] as u16),
             r_type: question.qtype,
