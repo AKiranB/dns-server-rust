@@ -244,7 +244,11 @@ fn read_questions(qdcount: u16, buf: &[u8]) -> (Vec<DnsQuestion>, Vec<usize>) {
     (q, offsets)
 }
 
-fn build_answers(questions: &Vec<DnsQuestion>, offsets: Vec<usize>) -> Vec<DnsAnswer> {
+fn build_answers(
+    questions: &Vec<DnsQuestion>,
+    offsets: Vec<usize>,
+    is_resolver: bool,
+) -> Vec<DnsAnswer> {
     let mut a = vec![];
     for (i, question) in questions.iter().enumerate() {
         let answer = DnsAnswer {
