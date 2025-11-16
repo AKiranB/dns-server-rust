@@ -1,5 +1,6 @@
 use anyhow::Error;
 use std::{env, net::UdpSocket};
+mod answer;
 pub struct DnsHeader {
     id: u16,
     qr: bool,
@@ -208,19 +209,54 @@ impl DnsAnswer {
         buf
     }
 
-    pub fn from_bytes(buf: &[u8]) -> 
+    pub fn from_bytes(buf: &[u8], start: usize) -> (Self, usize) {
+        let (name, total_bytes_consumed) = read_name(buf, start);
+        let mut offset = total_bytes_consumed;
+        let r_type = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
+        offset += 2;
+        let class = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
+        offset += 2;
+        let time_to_live = u32::from_be_bytes([
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+        ]);
+        offset += 4;
+        let length = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
+        offset += 2;
 
-    pub fn parse_upstream(buf: &[u8]) -> DnsAnswer {
-        let read_values_from_forward_server_header = DnsHeader::from_bytes(&buf).unwrap();
-        let qd_count = read_values_from_forward_server_header.5;
-        // starting byte or end byte of the question seciton
-        let offset = read_questions(qd_count, &buf);
-        // from here, for ancount of the above forwarding servers header section,
-        // iterate over the buffer and use from_bytes
-        // to parse each answer from the forwarding server
-        // write this directly to the vector in build answers
+        let data = u32::from_be_bytes([
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+        ]);
 
+        offset += 4;
+
+        let answer = DnsAnswer {
+            name: DnsName::Label(name),
+            r_type: r_type,
+            class: class,
+            time_to_live,
+            length,
+            data,
+        };
+
+        return (answer, offset);
     }
+
+    // pub fn parse_upstream(buf: &[u8]) -> DnsAnswer {
+    //     let read_values_from_forward_server_header = DnsHeader::from_bytes(&buf).unwrap();
+    //     let qd_count = read_values_from_forward_server_header.5;
+    //     // starting byte or end byte of the question seciton
+    //     let offset = read_questions(qd_count, &buf);
+    //     // from here, for ancount of the above forwarding servers header section,
+    //     // iterate over the buffer and use from_bytes
+    //     // to parse each answer from the forwarding server
+    //     // write this directly to the vector in build answers
+    // }
 }
 
 fn read_questions(qdcount: u16, buf: &[u8]) -> (Vec<DnsQuestion>, Vec<usize>) {
@@ -251,22 +287,21 @@ fn build_answers(
 ) -> Vec<DnsAnswer> {
     let mut a = vec![];
     for (i, question) in questions.iter().enumerate() {
-        if is_resolver {
-            let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
-            let mut buf: [u8; 512] = [0; 512];
+        // if is_resolver {
+        //     let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
+        //     let mut buf: [u8; 512] = [0; 512];
 
-            let (amt, src) = connection.recv_from(&mut buf);
-        } else {
-            let answer = DnsAnswer {
-                name: DnsName::Ptr(offsets[i] as u16),
-                r_type: question.qtype,
-                class: question.qclass,
-                time_to_live: 60,
-                length: 4,
-                data: 8888,
-            };
-            a.push(answer);
-        }
+        //     let (amt, src) = connection.recv_from(&mut buf);
+        // } else {
+        let answer = DnsAnswer {
+            name: DnsName::Ptr(offsets[i] as u16),
+            r_type: question.qtype,
+            class: question.qclass,
+            time_to_live: 60,
+            length: 4,
+            data: 8888,
+        };
+        a.push(answer);
     }
     a
 }
@@ -312,8 +347,6 @@ fn main() {
 
                 let (questions, offsets) = read_questions(qdcount, &buf);
                 let answers = build_answers(&questions, offsets, resolver.is_some());
-
-    
 
                 let header = DnsHeader {
                     id: read_values_from_header.0,
