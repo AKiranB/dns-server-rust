@@ -1,6 +1,7 @@
 use anyhow::Error;
 use std::{env, net::UdpSocket};
-mod answer;
+mod answer_section;
+mod utils;
 pub struct DnsHeader {
     id: u16,
     qr: bool,
@@ -84,7 +85,7 @@ fn read_name(buf: &[u8], start: usize) -> (Vec<String>, usize) {
             let byte_two = buf[offset + 1];
             let ptr = (((len as u16 & 0x3F) << 8) | byte_two as u16) as usize;
             if !has_jumped {
-                end_after_pointer = ptr + 1;
+                end_after_pointer = offset + 2;
                 has_jumped = true;
             }
             offset = ptr;
@@ -211,29 +212,29 @@ impl DnsAnswer {
 
     pub fn from_bytes(buf: &[u8], start: usize) -> (Self, usize) {
         let (name, total_bytes_consumed) = read_name(buf, start);
-        let mut offset = total_bytes_consumed;
-        let r_type = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
-        offset += 2;
-        let class = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
-        offset += 2;
+        let mut consumed = total_bytes_consumed;
+        let r_type = u16::from_be_bytes([buf[consumed], buf[consumed + 1]]);
+        consumed += 2;
+        let class = u16::from_be_bytes([buf[consumed], buf[consumed + 1]]);
+        consumed += 2;
         let time_to_live = u32::from_be_bytes([
-            buf[offset],
-            buf[offset + 1],
-            buf[offset + 2],
-            buf[offset + 3],
+            buf[consumed],
+            buf[consumed + 1],
+            buf[consumed + 2],
+            buf[consumed + 3],
         ]);
-        offset += 4;
-        let length = u16::from_be_bytes([buf[offset], buf[offset + 1]]);
-        offset += 2;
+        consumed += 4;
+        let length = u16::from_be_bytes([buf[consumed], buf[consumed + 1]]);
+        consumed += 2;
 
         let data = u32::from_be_bytes([
-            buf[offset],
-            buf[offset + 1],
-            buf[offset + 2],
-            buf[offset + 3],
+            buf[consumed],
+            buf[consumed + 1],
+            buf[consumed + 2],
+            buf[consumed + 3],
         ]);
 
-        offset += 4;
+        consumed += 4;
 
         let answer = DnsAnswer {
             name: DnsName::Label(name),
@@ -244,19 +245,31 @@ impl DnsAnswer {
             data,
         };
 
-        return (answer, offset);
+        return (answer, consumed);
     }
 
-    // pub fn parse_upstream(buf: &[u8]) -> DnsAnswer {
-    //     let read_values_from_forward_server_header = DnsHeader::from_bytes(&buf).unwrap();
-    //     let qd_count = read_values_from_forward_server_header.5;
-    //     // starting byte or end byte of the question seciton
-    //     let offset = read_questions(qd_count, &buf);
-    //     // from here, for ancount of the above forwarding servers header section,
-    //     // iterate over the buffer and use from_bytes
-    //     // to parse each answer from the forwarding server
-    //     // write this directly to the vector in build answers
-    // }
+    pub fn parse_upstream(buf: &[u8]) -> Vec<DnsAnswer> {
+        let read_values_from_forward_server_header = DnsHeader::from_bytes(&buf).unwrap();
+        let ancount = read_values_from_forward_server_header.6;
+        let qdcount = read_values_from_forward_server_header.5;
+        let (_, offsets) = read_questions(qdcount, &buf);
+        let mut upstream_answers = vec![];
+        let mut offset;
+        if let Some(last) = offsets.last() {
+            println!("{:?}", offsets);
+            print!("{}", last);
+            offset = *last;
+        } else {
+            offset = 0
+        }
+        for _ in 0..ancount as usize {
+            let (answer, consumed) = DnsAnswer::from_bytes(&buf, offset);
+            upstream_answers.push(answer);
+            print!("{}", offset);
+            offset += consumed;
+        }
+        return upstream_answers;
+    }
 }
 
 fn read_questions(qdcount: u16, buf: &[u8]) -> (Vec<DnsQuestion>, Vec<usize>) {
@@ -266,14 +279,8 @@ fn read_questions(qdcount: u16, buf: &[u8]) -> (Vec<DnsQuestion>, Vec<usize>) {
 
     for _ in 0..qdcount as usize {
         let (question, offset) = DnsQuestion::from_bytes(&buf, start_byte);
-        let question = DnsQuestion {
-            qname: question.qname,
-            qclass: question.qclass,
-            qtype: question.qtype,
-        };
-
         q.push(question);
-        offsets.push(start_byte);
+        offsets.push(offset);
         start_byte = offset;
     }
 
@@ -285,25 +292,26 @@ fn build_answers(
     offsets: Vec<usize>,
     is_resolver: bool,
 ) -> Vec<DnsAnswer> {
-    let mut a = vec![];
+    let mut answers = vec![];
     for (i, question) in questions.iter().enumerate() {
-        // if is_resolver {
-        //     let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
-        //     let mut buf: [u8; 512] = [0; 512];
+        if is_resolver {
+            let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
+            let mut buf: [u8; 512] = [0; 512];
 
-        //     let (amt, src) = connection.recv_from(&mut buf);
-        // } else {
-        let answer = DnsAnswer {
-            name: DnsName::Ptr(offsets[i] as u16),
-            r_type: question.qtype,
-            class: question.qclass,
-            time_to_live: 60,
-            length: 4,
-            data: 8888,
-        };
-        a.push(answer);
+            // let (amt, src) = connection.recv_from(&mut buf);
+        } else {
+            let answer = DnsAnswer {
+                name: DnsName::Ptr(offsets[i] as u16),
+                r_type: question.qtype,
+                class: question.qclass,
+                time_to_live: 60,
+                length: 4,
+                data: 8888,
+            };
+            answers.push(answer);
+        }
     }
-    a
+    answers
 }
 
 fn write_answers(answers: Vec<DnsAnswer>) -> Vec<u8> {
