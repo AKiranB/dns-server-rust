@@ -44,6 +44,7 @@ fn test_dns_answer_parse_upstream() {
         0x00, 0x01, // QTYPE = A
         0x00, 0x01, // QCLASS = IN
         // ---------- Answer #1 ----------
+        // Startig byte is 29 here
         0xC0, 0x0C, // NAME = pointer to offset 12 (example.com)
         0x00, 0x01, // TYPE = A
         0x00, 0x01, // CLASS = IN
