@@ -255,9 +255,8 @@ impl DnsAnswer {
         let (_, offsets) = read_questions(qdcount, &buf);
         let mut upstream_answers = vec![];
         let mut offset;
+
         if let Some(last) = offsets.last() {
-            println!("{:?}", offsets);
-            print!("{}", last);
             offset = *last;
         } else {
             offset = 0
@@ -265,8 +264,7 @@ impl DnsAnswer {
         for _ in 0..ancount as usize {
             let (answer, consumed) = DnsAnswer::from_bytes(&buf, offset);
             upstream_answers.push(answer);
-            print!("{}", offset);
-            offset += consumed;
+            offset = consumed;
         }
         return upstream_answers;
     }
