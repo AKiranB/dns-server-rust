@@ -289,6 +289,8 @@ fn build_answers(
     questions: &Vec<DnsQuestion>,
     offsets: Vec<usize>,
     is_resolver: bool,
+    forwarding_address: &String,
+    query_bytes: &[u8],
 ) -> Vec<DnsAnswer> {
     let mut answers = vec![];
     for (i, question) in questions.iter().enumerate() {
