@@ -352,8 +352,14 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     let mut resolver = None;
+    let mut address = None;
     if args[1] == "--resolver" {
-        resolver = Some(&args[2]);
+        resolver = Some(&args[1]);
+        address = Some(&args[2]);
+    }
+
+    let is_it_a_resolver = resolver.is_some();
+    print!("{}", is_it_a_resolver);
     }
 
     loop {
