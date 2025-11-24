@@ -295,6 +295,8 @@ fn build_answers(
     rd: bool,
 ) -> Vec<DnsAnswer> {
     let mut answers = vec![];
+    let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+
     for (i, question) in questions.iter().enumerate() {
         if is_resolver {
             let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
