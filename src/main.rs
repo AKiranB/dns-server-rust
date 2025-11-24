@@ -302,7 +302,34 @@ fn build_answers(
             let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
             let mut buf: [u8; 512] = [0; 512];
 
-            // let (amt, src) = connection.recv_from(&mut buf);
+            let header = DnsHeader {
+                id,
+                qr: false,
+                opcode,
+                aa: false,
+                tc: false,
+                rd,
+                ra: false,
+                z: false,
+                rcode: 0,
+                qdcount: 1,
+                ancount: 0,
+                nscount: 0,
+                arcount: 0,
+            };
+
+            let mut forwarding_packet: Vec<u8> = vec![];
+            forwarding_packet.extend_from_slice(&header.to_bytes());
+            forwarding_packet.extend_from_slice(&question.to_bytes());
+
+            socket
+                .send_to(&forwarding_packet, forwarding_address)
+                .expect("Error forwarding packet to forwarding serever");
+
+            let (amount, _) = socket.recv_from(&mut buf).expect("Error receving data");
+
+            let parsed_upstream_answers = DnsAnswer::parse_upstream(&buf[..amount]);
+            answers.extend(parsed_upstream_answers);
         } else {
             let answer = DnsAnswer {
                 name: DnsName::Ptr(offsets[i] as u16),
