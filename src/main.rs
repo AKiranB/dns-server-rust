@@ -290,20 +290,10 @@ fn build_answers(
     offsets: Vec<usize>,
     is_resolver: bool,
     forwarding_address: &String,
-    query_bytes: &[u8],
+    id: u16,
+    opcode: u8,
+    rd: bool,
 ) -> Vec<DnsAnswer> {
-    if is_resolver {
-        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-        socket
-            .send_to(&query_bytes, forwarding_address)
-            .expect("Error forwarding packet to forwarding serever");
-
-        let mut buf: [u8; 512] = [0; 512];
-        let (amount, _) = socket.recv_from(&mut buf).expect("Error receving data");
-
-        let parsed_upstream_answers = DnsAnswer::parse_upstream(&buf[..amount]);
-        return parsed_upstream_answers;
-    }
     let mut answers = vec![];
     for (i, question) in questions.iter().enumerate() {
         if is_resolver {
