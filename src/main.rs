@@ -401,15 +401,15 @@ fn main() {
                 );
 
                 let header = DnsHeader {
-                    id: read_values_from_header.0,
+                    id,
                     qr: true,
-                    opcode: read_values_from_header.2,
+                    opcode,
                     aa: false,
                     tc: false,
-                    rd: read_values_from_header.3,
+                    rd,
                     ra: false,
                     z: false,
-                    rcode: read_values_from_header.4,
+                    rcode,
                     qdcount,
                     ancount: answers.len() as u16,
                     nscount: 0,
