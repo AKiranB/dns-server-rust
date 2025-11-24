@@ -386,8 +386,8 @@ fn main() {
                 println!("Received {} bytes from {}", number_of_bytes, source_address);
 
                 let mut response: Vec<u8> = vec![];
-                let read_values_from_header = DnsHeader::from_bytes(&buf).unwrap();
-                let qdcount = read_values_from_header.5;
+                let (id, _qr, opcode, rd, rcode, qdcount, _ancount) =
+                    DnsHeader::from_bytes(&buf[..number_of_bytes]).unwrap();
 
                 let (questions, offsets) = read_questions(qdcount, &buf);
                 let answers = build_answers(&questions, offsets, resolver.is_some());
