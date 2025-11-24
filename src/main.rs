@@ -390,7 +390,15 @@ fn main() {
                     DnsHeader::from_bytes(&buf[..number_of_bytes]).unwrap();
 
                 let (questions, offsets) = read_questions(qdcount, &buf);
-                let answers = build_answers(&questions, offsets, resolver.is_some());
+                let answers = build_answers(
+                    &questions,
+                    offsets,
+                    resolver.is_some(),
+                    address.unwrap(),
+                    id,
+                    opcode,
+                    rd,
+                );
 
                 let header = DnsHeader {
                     id: read_values_from_header.0,
