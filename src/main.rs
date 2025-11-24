@@ -299,7 +299,6 @@ fn build_answers(
 
     for (i, question) in questions.iter().enumerate() {
         if is_resolver {
-            let connection = UdpSocket::bind("0.0.0.0:0").unwrap();
             let mut buf: [u8; 512] = [0; 512];
 
             let header = DnsHeader {
